@@ -57,4 +57,6 @@ class Editables(enum.Enum):
 
     embed_size = 'embed_size'
 
+    spotify_refresh_token = 'spotify_refresh_token'
+
 

@@ -59,7 +59,8 @@ class GuildConfig:
 class DefaultUserConfig:
 
     __slots__ = ('colour', 'blacklisted', 'blacklisted_reason', 'timezone', 'timezone_private', 'coins', 'xp', 'level_up_notifications', 'daily_collected', 'weekly_collected',
-                 'monthly_collected', 'daily_streak', 'weekly_streak', 'monthly_streak', 'created_at', 'birthday', 'birthday_private', 'reminders', 'requires_db_update')
+                 'monthly_collected', 'daily_streak', 'weekly_streak', 'monthly_streak', 'created_at', 'birthday', 'birthday_private', 'spotify_refresh_token', 'reminders',
+                 'requires_db_update')
 
     def __init__(self) -> None:
 
@@ -88,6 +89,8 @@ class DefaultUserConfig:
 
         self.birthday = pendulum.DateTime(2020, 1, 1, 0, 0, 0, tzinfo=pendulum.timezone('UTC'))
         self.birthday_private = False
+
+        self.spotify_refresh_token = None
 
         self.reminders = []
         self.requires_db_update = []
@@ -119,7 +122,8 @@ class DefaultUserConfig:
 class UserConfig:
 
     __slots__ = ('colour', 'blacklisted', 'blacklisted_reason', 'timezone', 'timezone_private', 'coins', 'xp', 'level_up_notifications', 'daily_collected', 'weekly_collected',
-                 'monthly_collected', 'daily_streak', 'weekly_streak', 'monthly_streak', 'created_at', 'birthday', 'birthday_private', 'reminders', 'requires_db_update')
+                 'monthly_collected', 'daily_streak', 'weekly_streak', 'monthly_streak', 'created_at', 'birthday', 'birthday_private', 'spotify_refresh_token', 'reminders',
+                 'requires_db_update')
 
     def __init__(self, data: dict) -> None:
 
@@ -148,6 +152,8 @@ class UserConfig:
 
         self.birthday = pendulum.parse(data.get('birthday').isoformat(), tz='UTC')
         self.birthday_private = data.get('birthday_private')
+
+        self.spotify_refresh_token = data.get('spotify_refresh_token')
 
         self.reminders = []
         self.requires_db_update = []

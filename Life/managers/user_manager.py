@@ -216,6 +216,16 @@ class UserConfigManager:
             data = await self.bot.db.fetchrow(*operations[operation.value])
             user_config.birthday_private = data['birthday_private']
 
+        elif editable == Editables.spotify_refresh_token:
+
+            operations = {
+                Operations.set.value: ('UPDATE user_configs SET spotify_refresh_token = $1 WHERE id = $2 RETURNING spotify_refresh_token', value, user_id),
+                Operations.reset.value: ('UPDATE user_configs SET spotify_refresh_token = $1 WHERE id = $2 RETURNING spotify_refresh_token', None, user_id),
+            }
+
+            data = await self.bot.db.fetchrow(*operations[operation.value])
+            user_config.spotify_refresh_token = data['spotify_refresh_token']
+
         return user_config
 
     #

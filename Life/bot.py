@@ -13,20 +13,23 @@
 import collections
 import logging
 import time
-import typing
+from typing import Dict, Optional, Union
 
 import aiohttp
 import aredis
 import asyncpg
 import discord
+import mystbin
 import psutil
 from discord.ext import commands
 
+from cogs.web import main
+from cogs.web.main import LifeWeb
 from config import config
 from managers import guild_manager, user_manager
-from utilities import context, help, objects, utils
+from utilities import context, help, objects, spotify, utils
 
-log = logging.getLogger(__name__)
+__log__ = logging.getLogger(__name__)
 
 
 class Life(commands.AutoShardedBot):
@@ -79,28 +82,31 @@ class Life(commands.AutoShardedBot):
         self.first_ready = True
 
         self.error_formatter = None
-        self.mystbin = None
         self.imaging = None
-        self.ksoft = None
-        self.redis = None
-        self.db = None
+
+        self.redis: Optional[aredis.StrictRedis] = None
+        self.mystbin: Optional[mystbin.Client] = None
+        self.db: Optional[asyncpg.Connection] = None
+
+        self.life_web: Optional[LifeWeb] = None
+        self.spotify: Optional[spotify.client.Client] = None
 
     async def get_context(self, message: discord.Message, *, cls=context.Context) -> context.Context:
         return await super().get_context(message, cls=cls)
 
-    async def is_owner(self, person: typing.Union[discord.User, discord.Member]) -> bool:
+    async def is_owner(self, person: Union[discord.User, discord.Member]) -> bool:
         return person.id in self.config.owner_ids
 
     async def get_prefix(self, message: discord.Message) -> list:
 
         if not message.guild:
-            return commands.when_mentioned_or(self.config.prefix, '')(self, message)
+            return commands.when_mentioned_or(self.config.prefix, 'I-', '')(self, message)
 
         guild_config = self.guild_manager.get_guild_config(guild_id=message.guild.id)
         if isinstance(guild_config, objects.DefaultGuildConfig):
-            return commands.when_mentioned_or(self.config.prefix)(self, message)
+            return commands.when_mentioned_or(self.config.prefix, 'I-')(self, message)
 
-        return commands.when_mentioned_or(self.config.prefix, *guild_config.prefixes)(self, message)
+        return commands.when_mentioned_or(self.config.prefix, 'I-', *guild_config.prefixes)(self, message)
 
     async def command_check(self, ctx: context.Context) -> bool:
 
@@ -135,6 +141,8 @@ class Life(commands.AutoShardedBot):
 
         self.first_ready = False
 
+        self.life_web = await main.load(bot=self)
+
         await self.user_manager.load()
         await self.guild_manager.load()
 
@@ -145,43 +153,42 @@ class Life(commands.AutoShardedBot):
     async def start(self, *args, **kwargs) -> None:
 
         try:
-            log.debug('[PSQL] Attempting connection.')
+            __log__.debug('[PSQL] Attempting connection.')
             db = await asyncpg.create_pool(**self.config.postgresql, max_inactive_connection_lifetime=0)
         except Exception as e:
-            log.critical(f'[PSQL] Error while connecting.\n{e}\n')
+            __log__.critical(f'[PSQL] Error while connecting.\n{e}\n')
             print(f'\n[POSTGRESQL] An error occurred while connecting to PostgreSQL: {e}')
             raise ConnectionError
         else:
-            log.info('[PSQL] Successful connection.')
+            __log__.info('[PSQL] Successful connection.')
             print(f'\n[POSTGRESQL] Connected to the PostgreSQL database.')
             self.db = db
 
         try:
-            log.debug('[REDIS] Attempting connection.')
+            __log__.debug(f'[REDIS] Attempting connection to \'{self.config.redis["host"]}:{self.config.redis["port"]}\' on DB \'{self.config.redis["db"]}\'.')
             redis = aredis.StrictRedis(**self.config.redis)
             await redis.set('connected', 0)
-        except (aredis.ConnectionError, aredis.ResponseError):
-            log.critical(f'[REDIS] Error while connecting.')
-            print(f'[REDIS] An error occurred while connecting to Redis.\n')
-            raise ConnectionError
+        except aredis.ConnectionError or aredis.ResponseError:
+            __log__.critical(f'[REDIS] Error while connecting to Redis DB number \'{self.config.redis["db"]}\'.')
+            raise ConnectionError(f'Error while connecting to Redis DB number \'{self.config.redis["db"]}\'.')
         else:
-            log.info('[REDIS] Successful connection.')
-            print(f'[REDIS] Connected to Redis.\n')
+            __log__.info(f'[REDIS] Successful connection to Redis at \'{self.config.redis["host"]}:{self.config.redis["port"]}\' on DB \'{self.config.redis["db"]}\'.')
+            print(f'[REDIS] Successful connection to Redis DB number \'{self.config.redis["db"]}\'. \n')
             self.redis = redis
 
         for extension in self.config.extensions:
             try:
                 self.load_extension(extension)
-                log.info(f'[EXTENSIONS] Loaded - {extension}')
+                __log__.info(f'[EXTENSIONS] Loaded - {extension}')
                 print(f'[EXTENSIONS] Loaded - {extension}')
             except commands.ExtensionNotFound:
-                log.warning(f'[EXTENSIONS] Extension not found - {extension}')
+                __log__.warning(f'[EXTENSIONS] Extension not found - {extension}')
                 print(f'[EXTENSIONS] Extension not found - {extension}')
             except commands.NoEntryPointError:
-                log.warning(f'[EXTENSIONS] No entry point - {extension}')
+                __log__.warning(f'[EXTENSIONS] No entry point - {extension}')
                 print(f'[EXTENSIONS] No entry point - {extension}')
             except commands.ExtensionFailed as error:
-                log.warning(f'[EXTENSIONS] Failed - {extension} - Reason: {error}')
+                __log__.warning(f'[EXTENSIONS] Failed - {extension} - Reason: {error}')
                 print(f'[EXTENSIONS] Failed - {extension} - Reason: {error}')
 
         self.add_check(self.command_check)
@@ -189,17 +196,17 @@ class Life(commands.AutoShardedBot):
 
     async def close(self) -> None:
 
-        log.info('[BOT] Closing bot down.')
+        __log__.info('[BOT] Closing bot down.')
         print('\n[BOT] Closing bot down.')
 
-        log.info('[BOT] Closing database connection.')
+        __log__.info('[BOT] Closing database connection.')
         print('[DB] Closing database connection.')
         await self.db.close()
 
-        log.info('[BOT] Closing aiohttp client session.')
+        __log__.info('[BOT] Closing aiohttp client session.')
         print('[CS] Closing aiohttp client session.')
         await self.session.close()
 
-        log.info('[BOT] Bot has shutdown.')
+        __log__.info('[BOT] Bot has shutdown.')
         print('Bye bye!')
         await super().close()
